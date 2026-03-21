@@ -15,6 +15,8 @@
  - registra un contatore per ogni scaglione ISEE quando viene applicato lo sconto
  - blocca lo sconto quando il contatore raggiunge il tetto massimo
  - aggiunge un pannello admin "Sconti ISEE" nel menu di WordPress
+*/
+
 
 if(!class_exists('Teatro_discounts')):
 class Teatro_discounts
@@ -25,6 +27,15 @@ class Teatro_discounts
 		add_action('plugins_loaded', array($this, 'init'));
 		add_action('wp_enqueue_scripts', array($this, 'enqueue_teatro_script'));
 	}
+
+	private function productInCategory( $product_id, $category_slug ) {
+    return has_term( $category_slug, 'product_cat', $product_id );
+	}
+
+	/* Aggiungo la categoria del prodotto tramite lo slug del prodotto invece che con 
+	l'ID perché così è più flessibile: se in futuro cambiano gli ID dei prodotti non serve aggiornare il codice.
+		Cosi lo posoo usare per attivare gli sconti solo sui campi solari primaria
+	*/
 
 	public function init(){		
 		if(class_exists('WC_Integration')){		
@@ -244,11 +255,17 @@ class Teatro_discounts
 	}
 
 	public function checkSD_EligibilityFromCart($cart=false){
+		
 		if(!empty($cart)): global $WC_custom_teatro_attributes;
 			$discount_amount=$subtotal_courses=0; $discount_label='Sconto fratelli '; 
 			$repeated_woc = $this->getWeekDetailsFromOrders();
 			foreach($cart->get_cart() as $cart_item_key => $cart_item){ 			
 				if(!empty($cart_item['product_weeks_selected'])){ 
+
+				 // Sconto fratelli solo per campi solari primaria
+        if ( !$this->productInCategory( $cart_item['product_id'], 'campi-solari-primaria' ) ) {
+            continue;
+        }
 					$repeated_week_orders_completed  = !empty($repeated_woc['weeks']) ? $repeated_woc['weeks'] : [];
 					$repeated_child_orders_completed = !empty($repeated_woc['schds']) ? $repeated_woc['schds'] : []; 
 					$pcs = $WC_custom_teatro_attributes->extractMultipleSelections($cart_item['parent_childs_selected']);
@@ -282,6 +299,11 @@ class Teatro_discounts
 
 	    foreach ($cart->get_cart() as $item) {
 	        if (!empty($item['product_weeks_selected'])) {
+
+			// Sconto settimane consecutive solo per campi solari primaria
+        if ( !$this->productInCategory( $item['product_id'], 'campi-solari-primaria' ) ) {
+            continue;
+        }
 	            $weeks         = $WC_custom_teatro_attributes->extractMultipleSelections($item['product_weeks_selected']);
 	            $regular_price = (float)$item['data']->get_regular_price();
 	            foreach ($weeks as $w) {
