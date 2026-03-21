@@ -6,7 +6,15 @@
 * Author: Shambix
 * Author URI: https://www.shambix.com
 @package           Woocommerce
-*/
+*
+* Uprade by E3pr0m - https://www.e3pr0m.com
+* Upgrade log: 
+* MODIFICA v1.0.1 – Contatori ISEE
+* Aggiunto il file teatro-isee-counter.php che gestisce i contatori per ogni scaglione ISEE.
+* Il file teatro-isee-counter.php:
+ - registra un contatore per ogni scaglione ISEE quando viene applicato lo sconto
+ - blocca lo sconto quando il contatore raggiunge il tetto massimo
+ - aggiunge un pannello admin "Sconti ISEE" nel menu di WordPress
 
 if(!class_exists('Teatro_discounts')):
 class Teatro_discounts
