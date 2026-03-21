@@ -1,6 +1,8 @@
 <?php
 /**
- * Teatro ISEE Counter – modulo contatori sconto ISEE
+ * Description: Teatro ISEE Counter – modulo contatori sconto ISEE
+ * Version:           1.0.0
+ * Author: E3pr0m@p&p
  *
  * Caricato automaticamente da Teatro_discounts::init() tramite require_once.
  * Non va attivato come plugin separato.
