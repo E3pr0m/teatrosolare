@@ -7,7 +7,7 @@
 * Author URI: https://www.shambix.com
 @package           Woocommerce
 *
-* Uprade by E3pr0m - https://www.e3pr0m.com
+* Upgrade by E3pr0m - https://www.e3pr0m.com
 * Upgrade log: 
 * MODIFICA v1.0.1 – Contatori ISEE
 * Aggiunto il file teatro-isee-counter.php che gestisce i contatori per ogni scaglione ISEE.
