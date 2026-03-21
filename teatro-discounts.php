@@ -233,32 +233,36 @@ class Teatro_discounts
 		}
 	}	
 
-	public function getWeekDetailsFromOrders(){
-		$args=['customer_id'=>get_current_user_id(),'limit'=>-1,'status'=>'completed'];	
-		$orders = wc_get_orders($args); $return_weeks=$return_childs=[];
-		if(!empty($orders)){ global $WC_custom_teatro_attributes;
-			foreach($orders as $order):
-				foreach($order->get_items() as $order_items):
-					$s_week  = $order_items->get_meta('product_weeks_selected');
-					$s_child = $order_items->get_meta('parent_childs_selected');
-					$s_child_array = $WC_custom_teatro_attributes->extractMultipleSelections(!empty($s_child)?$s_child:[]);
-					if(!empty($s_week)): 
-						foreach($WC_custom_teatro_attributes->extractMultipleSelections($s_week) as $k => $weeks):
-							array_push($return_weeks, $WC_custom_teatro_attributes->getReadableWeekString($weeks));
-							array_push($return_childs, !empty($s_child_array[$k])?$s_child_array[$k]:'');
-						endforeach;
-					endif;
-				endforeach;
-			endforeach;
-		}
-		return ['weeks'=>array_unique($return_weeks),'schds'=>array_unique($return_childs)];
-	}
+public function getWeekDetailsFromOrders( $category_slug = false ){
+    $args=['customer_id'=>get_current_user_id(),'limit'=>-1,'status'=>'completed'];
+    $orders = wc_get_orders($args); $return_weeks=$return_childs=[];
+    if(!empty($orders)){ global $WC_custom_teatro_attributes;
+        foreach($orders as $order):
+            foreach($order->get_items() as $order_items):
+                // Filtro per categoria se richiesto
+                if( $category_slug && !$this->productInCategory( $order_items->get_product_id(), $category_slug ) ){
+                    continue;
+                }
+                $s_week  = $order_items->get_meta('product_weeks_selected');
+                $s_child = $order_items->get_meta('parent_childs_selected');
+                $s_child_array = $WC_custom_teatro_attributes->extractMultipleSelections(!empty($s_child)?$s_child:[]);
+                if(!empty($s_week)): 
+                    foreach($WC_custom_teatro_attributes->extractMultipleSelections($s_week) as $k => $weeks):
+                        array_push($return_weeks, $WC_custom_teatro_attributes->getReadableWeekString($weeks));
+                        array_push($return_childs, !empty($s_child_array[$k])?$s_child_array[$k]:'');
+                    endforeach;
+                endif;
+            endforeach;
+        endforeach;
+    }
+    return ['weeks'=>array_unique($return_weeks),'schds'=>array_unique($return_childs)];
+}
 
 	public function checkSD_EligibilityFromCart($cart=false){
 		
 		if(!empty($cart)): global $WC_custom_teatro_attributes;
 			$discount_amount=$subtotal_courses=0; $discount_label='Sconto fratelli '; 
-			$repeated_woc = $this->getWeekDetailsFromOrders();
+			$repeated_woc = $this->getWeekDetailsFromOrders('campi-solari-primaria');
 			foreach($cart->get_cart() as $cart_item_key => $cart_item){ 			
 				if(!empty($cart_item['product_weeks_selected'])){ 
 
@@ -291,7 +295,7 @@ class Teatro_discounts
 
 	    global $WC_custom_teatro_attributes;
 	    
-	    $history            = $this->getWeekDetailsFromOrders();
+	   $history = $this->getWeekDetailsFromOrders('campi-solari-primaria');
 	    $weeks_already_bought = count($history['weeks']); 
 
 	    $discount_amount    = 0;
