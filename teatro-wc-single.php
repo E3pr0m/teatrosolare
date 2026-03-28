@@ -773,10 +773,3 @@ function show_price_tab_for_courses_noisee(){
     </script>
     <?php   
 }
-
-/**
- * Descrizione della funzione
- * 
- * @param tipo $parametro Descrizione parametro
- * @return tipo Descrizione del valore di ritorno
- */

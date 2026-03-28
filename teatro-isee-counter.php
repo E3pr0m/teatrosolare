@@ -26,7 +26,13 @@
  *   CHECKOUT ORDER CREATED → assegna per-figlio leggendo order items
  *   ANNULLATO / RIMBORSATO → restituisce settimane a pool e per-figlio
  *   CARRELLO / CHECKOUT    → blocco effettivo se limite raggiunto
- *
+ * 
+ * 
+ *  Author: E3pr0m
+ *  Author URI: https://www.e3pr0m.com
+ * 
+ * 
+
  * @version 1.3.0
  */
 

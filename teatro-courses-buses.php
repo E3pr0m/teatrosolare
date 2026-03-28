@@ -6,6 +6,8 @@
 * Version: 1.0.0
 * Author: Shambix
 * Author URI: https://www.shambix.com
+* Edit by: E3pr0m
+* Author URI: https://www.e3pr0m.com
 */
 
 if(!class_exists('WC_custom_teatro_attributes')):
@@ -537,66 +539,4 @@ class WC_custom_teatro_attributes
 global $WC_custom_teatro_attributes;
 $WC_custom_teatro_attributes=new WC_custom_teatro_attributes();
 endif;
-
-/* =============================================================================
- * GESTIONE LIBERAZIONE POSTI PULMINO
- * Libera automaticamente i posti del bus quando un ordine viene
- * annullato (cancelled) o rimborsato (refunded).
- * Aggiunto in v1.0.1
- * ============================================================================= */
-
-/**
- * Aggancia la funzione agli stati WooCommerce di cancellazione e rimborso.
- */
-add_action('woocommerce_order_status_cancelled', 'teatro_release_bus_seats', 10, 1);
-add_action('woocommerce_order_status_refunded',  'teatro_release_bus_seats', 10, 1);
-
-/**
- * Libera i posti del pulmino associati all'ordine.
- *
- * @param int $order_id ID dell'ordine WooCommerce.
- */
-function teatro_release_bus_seats($order_id) {
-    $order = wc_get_order($order_id);
-    if (empty($order)) return;
-
-    foreach ($order->get_items() as $item) {
-        $bus_meta  = $item->get_meta('product_buses_selected');
-        $week_meta = $item->get_meta('product_weeks_selected');
-
-        // Se l'ordine non ha bus associati, saltiamo
-        if (empty($bus_meta) || empty($week_meta)) continue;
-
-        // Supporta selezioni multiple di bus separate da @@
-        $buses = explode('@@', $bus_meta);
-
-        foreach ($buses as $bus_id) {
-            $bus_id = trim($bus_id);
-            if (empty($bus_id) || $bus_id === 'empty') continue;
-
-            // Legge le prenotazioni esistenti in modo sicuro
-            $booked_raw   = get_post_meta($bus_id, 'seats_booked', true);
-            $booked_array = !empty($booked_raw) ? maybe_unserialize($booked_raw) : [];
-
-            if (empty($booked_array) || !is_array($booked_array)) continue;
-
-            // Rimuove solo le prenotazioni corrispondenti a questo ordine
-            $updated = array_filter($booked_array, function($booking) use ($order_id) {
-                return isset($booking['order_id']) && intval($booking['order_id']) !== intval($order_id);
-            });
-
-            // Salva il nuovo array senza la prenotazione rimossa
-            update_post_meta($bus_id, 'seats_booked', maybe_serialize(array_values($updated)));
-
-            // Aggiunge una nota visibile nell'ordine in backend
-            $order->add_order_note(
-                sprintf(
-                    'Posto pulmino (ID bus: %s) liberato automaticamente per ordine #%s.',
-                    esc_html($bus_id),
-                    esc_html($order_id)
-                )
-            );
-        }
-    }
-}
 

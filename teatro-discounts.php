@@ -2,9 +2,14 @@
 /*
 * Plugin Name:  Teatro Discounts
 * Description: Teatro Discounts
-* Version:      1.0.2
+* Version:      1.1.0
 * Author: Shambix
 * Author URI: https://www.shambix.com
+*
+* Edit by: E3pr0m
+* Author URI: https://www.e3pr0m.com
+
+
 @package Woocommerce
 */
 
@@ -56,14 +61,21 @@ class Teatro_discounts
 
 	public function getFeeAppliedArray(){ 
 		$isee_discount        = $this->validateUserProductEligibility(WC()->cart); 
-		$sibiling_discount    = $this->checkSD_EligibilityFromCart(WC()->cart); 
+		
+		// ── SCONTO FRATELLI: disabilitato come richiesto da teatro solare ──
+		// $sibiling_discount    = $this->checkSD_EligibilityFromCart(WC()->cart); 
+	
 		$consecutive_discount = $this->checkConsecutiveDiscount(WC()->cart); 
 
 		$discounts = [];
 		if(!empty($isee_discount['discount_amount']) && $isee_discount['discount_amount'] > 0)
 			$discounts['isee'] = ['label'=>$isee_discount['discount_label'],'amount'=>(float)$isee_discount['discount_amount']];
-		if(!empty($sibiling_discount['discount_amount']) && $sibiling_discount['discount_amount'] > 0)
-			$discounts['sibiling'] = ['label'=>$sibiling_discount['discount_label'],'amount'=>(float)$sibiling_discount['discount_amount']];
+		
+		// ── SCONTO FRATELLI: disabilitato come richiesto da teatro solare ──
+		// if(!empty($sibiling_discount['discount_amount']) && $sibiling_discount['discount_amount'] > 0)
+		// 	$discounts['sibiling'] = ['label'=>$sibiling_discount['discount_label'],'amount'=>(float)$sibiling_discount['discount_amount']];
+		
+		
 		if(!empty($consecutive_discount['discount_amount']) && $consecutive_discount['discount_amount'] > 0)
 			$discounts['consecutive'] = ['label'=>$consecutive_discount['discount_label'],'amount'=>(float)$consecutive_discount['discount_amount']];
 
