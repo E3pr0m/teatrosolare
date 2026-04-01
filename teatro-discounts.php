@@ -189,26 +189,30 @@ class Teatro_discounts
 		}
 	}	
 
-	public function getWeekDetailsFromOrders(){
-		$args   = ['customer_id'=>get_current_user_id(),'limit'=>-1,'status'=>'completed'];	
-		$orders = wc_get_orders($args); $return_weeks = $return_childs = [];
-		if(!empty($orders)){ global $WC_custom_teatro_attributes;
-			foreach($orders as $order):
-				foreach($order->get_items() as $order_items):
-					$s_week        = $order_items->get_meta('product_weeks_selected');
-					$s_child       = $order_items->get_meta('parent_childs_selected');
-					$s_child_array = $WC_custom_teatro_attributes->extractMultipleSelections(!empty($s_child)?$s_child:[]);
-					if(!empty($s_week)): 
-						foreach($WC_custom_teatro_attributes->extractMultipleSelections($s_week) as $k => $weeks):
-							array_push($return_weeks, $WC_custom_teatro_attributes->getReadableWeekString($weeks));
-							array_push($return_childs, !empty($s_child_array[$k])?$s_child_array[$k]:'');
-						endforeach;
-					endif;
-				endforeach;
-			endforeach;
-		}
-		return ['weeks'=>array_unique($return_weeks),'schds'=>array_unique($return_childs)];
-	}
+public function getWeekDetailsFromOrders(){
+    $args   = ['customer_id'=>get_current_user_id(),'limit'=>-1,'status'=>'completed'];
+    $orders = wc_get_orders($args); $return_weeks = $return_childs = [];
+    if(!empty($orders)){ global $WC_custom_teatro_attributes;
+        foreach($orders as $order):
+            foreach($order->get_items() as $order_items):
+                // ← FILTRO CATEGORIA: solo campi-solari-primaria
+                if ( ! has_term( 'campi-solari-primaria', 'product_cat', $order_items->get_product_id() ) ) {
+                    continue;
+                }
+                $s_week        = $order_items->get_meta('product_weeks_selected');
+                $s_child       = $order_items->get_meta('parent_childs_selected');
+                $s_child_array = $WC_custom_teatro_attributes->extractMultipleSelections(!empty($s_child)?$s_child:[]);
+                if(!empty($s_week)): 
+                    foreach($WC_custom_teatro_attributes->extractMultipleSelections($s_week) as $k => $weeks):
+                        array_push($return_weeks, $WC_custom_teatro_attributes->getReadableWeekString($weeks));
+                        array_push($return_childs, !empty($s_child_array[$k])?$s_child_array[$k]:'');
+                    endforeach;
+                endif;
+            endforeach;
+        endforeach;
+    }
+    return ['weeks'=>array_unique($return_weeks),'schds'=>array_unique($return_childs)];
+}
 
 	public function checkSD_EligibilityFromCart($cart=false){
 		if(!empty($cart)): global $WC_custom_teatro_attributes;
@@ -235,31 +239,37 @@ class Teatro_discounts
 		endif;
 	}
 
-	public function checkConsecutiveDiscount($cart) {
-		if (empty($cart)) return ['discount_amount' => 0, 'discount_label' => ''];
-		global $WC_custom_teatro_attributes;
-		$history              = $this->getWeekDetailsFromOrders();
-		$weeks_already_bought = count($history['weeks']); 
-		$discount_amount      = 0; $all_items_in_cart = [];
-		foreach ($cart->get_cart() as $item) {
-			if (!empty($item['product_weeks_selected'])) {
-				$weeks         = $WC_custom_teatro_attributes->extractMultipleSelections($item['product_weeks_selected']);
-				$regular_price = (float)$item['data']->get_regular_price();
-				foreach ($weeks as $w) $all_items_in_cart[] = ['price'=>$regular_price,'label'=>$w];
-			}
-		}
-		if (empty($all_items_in_cart)) return ['discount_amount' => 0, 'discount_label' => ''];
-		foreach ($all_items_in_cart as $index => $item) {
-			$current_position = $weeks_already_bought + $index + 1;
-			if      ($current_position == 1) continue;
-			elseif  ($current_position == 2) $percentage = 15;
-			elseif  ($current_position == 3) $percentage = 20;
-			else                             $percentage = 30;
-			
-			$discount_amount += ($item['price'] * $percentage) / 100;
-		}
-		return ['discount_amount'=>$discount_amount, 'discount_label'=>'Sconto fedeltà settimane'];
-	}
+public function checkConsecutiveDiscount($cart) {
+    if (empty($cart)) return ['discount_amount' => 0, 'discount_label' => ''];
+    global $WC_custom_teatro_attributes;
+    $history              = $this->getWeekDetailsFromOrders();
+    $weeks_already_bought = count($history['weeks']); 
+    $discount_amount      = 0; $all_items_in_cart = [];
+
+    foreach ($cart->get_cart() as $item) {
+        if (!empty($item['product_weeks_selected'])) {
+            // ← FILTRO CATEGORIA: solo campi-solari-primaria
+            if ( ! has_term( 'campi-solari-primaria', 'product_cat', $item['product_id'] ) ) {
+                continue;
+            }
+            $weeks         = $WC_custom_teatro_attributes->extractMultipleSelections($item['product_weeks_selected']);
+            $regular_price = (float)$item['data']->get_regular_price();
+            foreach ($weeks as $w) $all_items_in_cart[] = ['price'=>$regular_price,'label'=>$w];
+        }
+    }
+
+    if (empty($all_items_in_cart)) return ['discount_amount' => 0, 'discount_label' => ''];
+
+    foreach ($all_items_in_cart as $index => $item) {
+        $current_position = $weeks_already_bought + $index + 1;
+        if      ($current_position == 1) continue;
+        elseif  ($current_position == 2) $percentage = 15;
+        elseif  ($current_position == 3) $percentage = 20;
+        else                             $percentage = 30;
+        $discount_amount += ($item['price'] * $percentage) / 100;
+    }
+    return ['discount_amount'=>$discount_amount, 'discount_label'=>'Sconto fedeltà settimane'];
+}
 
 	public function get_product_subtotal($product, $quantity){
 		$price = $product->get_price(); 
