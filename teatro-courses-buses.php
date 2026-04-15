@@ -3,7 +3,7 @@
 * Plugin Name:  Teatro Courses Multiple 
 * Description: Teatro Courses with Multiple selection of weeks & buses with stops
 * Text Domain: teatro-courses-buses
-* Version: 1.0.0
+* Version: 1.1.0
 * Author: Shambix
 * Author URI: https://www.shambix.com
 * Edit by: E3pr0m
@@ -31,6 +31,11 @@ class WC_custom_teatro_attributes
 		add_action('wp_ajax_nopriv_goto_3step', array($this, 'goto_3step'));
 		add_action('wp_ajax_goto_addtocart', array($this, 'goto_addtocart'));
 		add_action('wp_ajax_nopriv_goto_addtocart', array($this, 'goto_addtocart'));
+
+		// Hook per rilasciare posti su annullamento/rimborso/pagamento fallito
+		add_action('woocommerce_order_status_cancelled', array($this, 'teatro_release_bus_seats'), 10, 1);
+		add_action('woocommerce_order_status_refunded', array($this, 'teatro_release_bus_seats'), 10, 1);
+		add_action('woocommerce_order_status_failed', array($this, 'teatro_release_bus_seats'), 10, 1);
 	}
 	public function init(){		
 		if(class_exists('WC_Integration')) {		
@@ -50,29 +55,34 @@ class WC_custom_teatro_attributes
 		wp_enqueue_script('teatro-ajax-call');		
 	 }	 
 	 /* get available seats by week */
-	 public function getAvailableSeatsbyWeek($week=false,$user=false){
+	 public function getAvailableSeatsbyWeek($week=false,$user=false,$pid=false){
 		 $user=!empty($user)?$user:get_current_user_id(); $seats_booked=0;
-		 if(!empty($week)): $orders=$this->getAllCompltedOrdersForCorses('weeks'); ///$this->printRData($week);
+		 if(!empty($week)): $orders=$this->getAllCompltedOrdersForCorses('weeks',$pid); ///$this->printRData($week);
 			$capacity=!empty($week['week_seats'])?$week['week_seats']:0;		//$this->printRData($orders);		
 			$week_selected=(!empty($week['start_date']) and !empty($week['end_date']))?strtotime(str_replace('/','-',$week['start_date'])).'@@'.strtotime(str_replace('/','-',$week['end_date'])):'';
 			if(!empty($orders)){
-				foreach($orders as $order){ 
+				foreach($orders as $order){
 					foreach($this->extractMultipleSelections($order) as $ordera){
 						$order_parts=explode('-', $ordera); //$this->printRData($order_parts);
-						$order_week=(!empty($order_parts[0]) and !empty($order_parts[1]))?strtotime($order_parts[0]).'@@'.strtotime($order_parts[1]):'';
+						$order_week=(!empty($order_parts[0]) and !empty($order_parts[1]))?strtotime(str_replace('/','-',trim($order_parts[0]))).'@@'.strtotime(str_replace('/','-',trim($order_parts[1]))):'';
+
 						if($order_week === $week_selected){
 							$seats_booked+=1;
 						}
-					}					
+					}
 				}
-			} 	
-		 endif; 
-		 //return ($capacity-$seats_booked);
+			}
+		 endif;
 		 return ($capacity > $seats_booked)?($capacity-$seats_booked):0;
+
 	 }
 	 
-	 public function getAllCompltedOrdersForCorses($rtype=false){
-		 $order_status_array = wc_get_order_statuses(); unset($order_status_array['wc-checkout-draft']);
+	 public function getAllCompltedOrdersForCorses($rtype=false,$pid=false){
+		 $order_status_array = wc_get_order_statuses();
+		 unset($order_status_array['wc-checkout-draft']);
+		 unset($order_status_array['wc-cancelled']);
+		 unset($order_status_array['wc-refunded']);
+		 unset($order_status_array['wc-failed']);
 		 $args=['limit'=>-1,'status'=>array_keys($order_status_array)];	//$this->printRData($order_status_array);
 		 $orders = wc_get_orders($args); $return=$return_weeks=$return_ids=[];
 		if(!empty($orders)){ 
@@ -81,10 +91,11 @@ class WC_custom_teatro_attributes
 					$s_week=$order_items->get_meta('product_weeks_selected'); //$this->printRData($s_week);
 					$s_child=$order_items->get_meta('parent_childs_selected');
 					if(!empty($s_week) and !empty($s_child)){
+						if(!empty($pid) and $order_items->get_product_id() != intval($pid)) continue;
 						array_push($return_ids, $order->get_id());
 						array_push($return_weeks, $s_week);
 					}
-				endforeach;			
+				endforeach;
 			endforeach;
 		} //$this->printRData($return_weeks);
 		switch($rtype):
@@ -420,13 +431,70 @@ class WC_custom_teatro_attributes
 			return  strtotime($week_parts[0]).$sign.strtotime($week_parts[1]);
 		}
 	}
-	/* get available seats */
+	/* get available seats — legge direttamente dagli ordini WooCommerce */
 	public function getBusAvailability($bus=false, $week=false){
-		if(!empty($bus)): 
-			$alreadyBooked=$this->alreadyBookedSeats($bus, $week);
+		if(!empty($bus)):
+			$alreadyBooked = $this->countBookedBusSeatsByWeek($bus, $week);
 			$seats = get_field('seats_capacity', $bus);
-			return ($seats-$alreadyBooked);
+			return ($seats - $alreadyBooked);
 		endif;
+	}
+
+	/* Conta i posti bus prenotati leggendo dagli ordini WooCommerce (fonte di verità unica) */
+	public function countBookedBusSeatsByWeek($bus_id=false, $week=false){
+		if (empty($bus_id)) return 0;
+
+		$order_status_array = wc_get_order_statuses();
+		unset($order_status_array['wc-checkout-draft']);
+		unset($order_status_array['wc-cancelled']);
+		unset($order_status_array['wc-refunded']);
+		unset($order_status_array['wc-failed']);
+
+		$orders = wc_get_orders(['limit' => -1, 'status' => array_keys($order_status_array)]);
+		$count = 0;
+
+		// Converti la settimana target in coppia di timestamp per confronto affidabile
+		// (stesso metodo usato da getAvailableSeatsbyWeek: str_replace '/' → '-')
+		$target_ts = '';
+		if (!empty($week)) {
+			$parts = preg_split('/\s*-\s*/', trim($week), 2);
+			if (count($parts) === 2) {
+				$ts_start = strtotime(str_replace('/', '-', trim($parts[0])));
+				$ts_end   = strtotime(str_replace('/', '-', trim($parts[1])));
+				$target_ts = $ts_start . '@@' . $ts_end;
+			}
+		}
+
+		if (!empty($orders)) {
+			foreach ($orders as $order) {
+				foreach ($order->get_items() as $item) {
+					$bus_meta  = $item->get_meta('product_buses_selected');
+					$week_meta = $item->get_meta('product_weeks_selected');
+					if (empty($bus_meta) || empty($week_meta)) continue;
+
+					$buses = $this->extractMultipleSelections($bus_meta);
+					$weeks = $this->extractMultipleSelections($week_meta);
+
+					foreach ($weeks as $i => $w) {
+						$b = isset($buses[$i]) ? trim($buses[$i]) : 'empty';
+						if ($b === 'empty' || intval($b) !== intval($bus_id)) continue;
+
+						// Verifica settimana se specificata
+						if (!empty($target_ts)) {
+							$w_parts = preg_split('/\s*-\s*/', trim($w), 2);
+							if (count($w_parts) !== 2) continue;
+							$w_ts_start = strtotime(str_replace('/', '-', trim($w_parts[0])));
+							$w_ts_end   = strtotime(str_replace('/', '-', trim($w_parts[1])));
+							$w_ts = $w_ts_start . '@@' . $w_ts_end;
+							if ($w_ts !== $target_ts) continue;
+						}
+
+						$count++;
+					}
+				}
+			}
+		}
+		return $count;
 	}
 	public function alreadyBookedSeats($bus=false, $week=false){ 	
 		if(!empty($bus) and !empty($week)){ $return=0;
@@ -443,32 +511,42 @@ class WC_custom_teatro_attributes
 	}
 	public function bookBusSeat($args=false){ //$this->printRData($args);
 		if(!empty($args['bus']) and !empty($args['book_data'])){
-			foreach($this->extractMultipleSelections($args['bus']) as $bus){
-				if($bus != 'empty'){
-					$abooked=get_post_meta($bus, 'seats_booked'); 
-					$abooked_array=!empty($abooked[0])?unserialize($abooked[0]):[]; 
-					$validOrder=$this->validateOrderAlreadySaved($args['book_data']['order_id'], $abooked_array);
-					if(empty($validOrder)){
-						array_push($abooked_array, $args['book_data']); 
-						update_post_meta($bus, 'seats_booked', serialize($abooked_array));				
-					}
+			// $args['bus'] è ora un singolo bus ID (non più una stringa @@-separata)
+			$bus = trim($args['bus']);
+			if($bus != 'empty'){
+				$abooked=get_post_meta($bus, 'seats_booked');
+				$abooked_array=!empty($abooked[0])?unserialize($abooked[0]):[];
+				// Controlla la coppia ordine+settimana per evitare duplicati
+				// ma permettere lo stesso ordine su settimane diverse dello stesso bus
+				$validOrder=$this->validateOrderAlreadySaved(
+					$args['book_data']['order_id'],
+					$abooked_array,
+					$args['book_data']['week_id'] ?? false
+				);
+				if(empty($validOrder)){
+					array_push($abooked_array, $args['book_data']);
+					update_post_meta($bus, 'seats_booked', serialize($abooked_array));
 				}
-			}		
+			}
 		}
 	}
-	private function validateOrderAlreadySaved($order=false, $booked=false){
+	private function validateOrderAlreadySaved($order=false, $booked=false, $week_id=false){
 		if(!empty($order)){ $return=0;
 			if(!empty($booked)){
 				foreach($booked as $bookeda){
-					if($bookeda['order_id'] == $order){
+					// Se viene passato week_id, controlla la coppia ordine+settimana
+					// (stesso ordine può prenotare settimane diverse sullo stesso bus)
+					$same_order = ($bookeda['order_id'] == $order);
+					$same_week  = (!$week_id || (isset($bookeda['week_id']) && $bookeda['week_id'] == $week_id));
+					if($same_order && $same_week){
 						$return=1;
 					}
-				}				
-			} else { 
+				}
+			} else {
 				$return=0;
 			}
 			return $return;
-		} 
+		}
 		return 2;
 	}
 	/* Get Childs of curent parent user */
@@ -531,11 +609,54 @@ class WC_custom_teatro_attributes
 			return date($wp_time, strtotime($time));
 		}	
 	}
-	
-	
-	
-	  
+
+	// Funzione per rilasciare i posti del pulmino quando un ordine viene annullato o rimborsato
+	public function teatro_release_bus_seats($order_id) {
+		$order = wc_get_order($order_id);
+		if (empty($order)) return;
+
+		foreach ($order->get_items() as $item) {
+			$bus_meta = $item->get_meta('product_buses_selected');
+			$week_meta = $item->get_meta('product_weeks_selected');
+
+			// Se l'ordine non ha bus associati, saltiamo
+			if (empty($bus_meta) || empty($week_meta)) continue;
+
+			// Supporta selezioni multiple di bus separate da @@
+			$buses = explode('@@', $bus_meta);
+
+			foreach ($buses as $bus_id) {
+				$bus_id = trim($bus_id);
+				if (empty($bus_id) || $bus_id === 'empty') continue;
+
+				// Legge le prenotazioni esistenti in modo sicuro
+				$booked_raw = get_post_meta($bus_id, 'seats_booked', true);
+				$booked_array = !empty($booked_raw) ? maybe_unserialize($booked_raw) : [];
+
+				if (empty($booked_array) || !is_array($booked_array)) continue;
+
+				// Rimuove solo le prenotazioni corrispondenti a questo ordine
+				$updated = array_filter($booked_array, function($booking) use ($order_id) {
+					return isset($booking['order_id']) && intval($booking['order_id']) !== intval($order_id);
+				});
+
+				// Salva il nuovo array senza la prenotazione rimossa
+				update_post_meta($bus_id, 'seats_booked', maybe_serialize(array_values($updated)));
+
+				// Aggiunge una nota visibile nell'ordine in backend
+				$order->add_order_note(
+					sprintf(
+						'Posto pulmino (ID bus: %s) liberato automaticamente per ordine #%s.',
+						esc_html($bus_id),
+						esc_html($order_id)
+					)
+				);
+			}
+		}
+	}
+
 }
+
 global $WC_custom_teatro_attributes;
 $WC_custom_teatro_attributes=new WC_custom_teatro_attributes();
 endif;

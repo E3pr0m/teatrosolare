@@ -77,11 +77,12 @@ function getCBStep2HTML($pid=false, $token=false){
 			$html.='<div class="checkBoxGroupWrap"><div class="radioGroupTitle">'.esc_html__('Choose from the available weeks:', 'teatro-courses-buses').'</div>';
 			if(!empty($weeks)){ $x=0; $unavailability = 0; 
 				foreach($weeks as $week): $selected=($x==0)?'checked':''; 
-					$seats = $WC_custom_teatro_attributes->getAvailableSeatsbyWeek($week); ///$WC_custom_teatro_attributes->printRData($seats);
+					$seats = $WC_custom_teatro_attributes->getAvailableSeatsbyWeek($week, false, $pid); ///$WC_custom_teatro_attributes->printRData($seats);
 					if($seats == 0){ $unavailability++; }
 					$disabled_seats=(empty($seats) || $seats <= 0)?'disabled':'';
 					$hide_seats=(empty($seats) || $seats <= 0)?' style="opacity: 0.1" ':'';
-					$html.='<div class="checkBoxOuter"><div class="checkBoxWrap"><input type="checkbox" class="btn-check" name="product_weeks_selected[]" id="product_weeks_selected_'.$x.'" value="'.$WC_custom_teatro_attributes->getForamttedDate($week['start_date']).' - '.$WC_custom_teatro_attributes->getForamttedDate($week['end_date']).'" autocomplete="off" '.$disabled_seats.' '.$hide_seats.'><label class="btn btn-outline-success" for="product_weeks_selected_'.$x.'">'.$WC_custom_teatro_attributes->getTranslatedDateString($week['start_date']).'-'.$WC_custom_teatro_attributes->getTranslatedDateString($week['end_date']).' ['.$seats.' '.esc_html__('available seats', 'teatro-courses-buses').']</label><span class="checkmark" '.$disabled_seats.' '.$hide_seats.'></span></div></div>';
+					$week_desc = !empty($week['week_description']) ? ' ('.esc_html($week['week_description']).')' : '';
+					$html.='<div class="checkBoxOuter"><div class="checkBoxWrap"><input type="checkbox" class="btn-check" name="product_weeks_selected[]" id="product_weeks_selected_'.$x.'" value="'.$WC_custom_teatro_attributes->getForamttedDate($week['start_date']).' - '.$WC_custom_teatro_attributes->getForamttedDate($week['end_date']).'" autocomplete="off" '.$disabled_seats.' '.$hide_seats.'><label class="btn btn-outline-success" for="product_weeks_selected_'.$x.'">'.$WC_custom_teatro_attributes->getTranslatedDateString($week['start_date']).'-'.$WC_custom_teatro_attributes->getTranslatedDateString($week['end_date']).$week_desc.' ['.$seats.' '.esc_html__('available seats', 'teatro-courses-buses').']</label><span class="checkmark" '.$disabled_seats.' '.$hide_seats.'></span></div></div>';
 					$x++;
 				endforeach;
 			}
@@ -120,38 +121,34 @@ function getCBStep3HTML($pid=false, $token=false){
 			$bus_count = 0;
 
 			foreach($WC_custom_teatro_attributes->extractMultipleSelections($token_data[2]) as $week):
-				
+
 				$html.= '<div class="radioTitleBus">'.$WC_custom_teatro_attributes->getTranslatedDateStringSE($week).'</div>';
-				$buses = $WC_custom_teatro_attributes->getBusesDataByWeek($pid, $week); //$WC_custom_teatro_attributes->printRData($buses);				
-				$bus_availability = 0; 				
-				foreach($buses as $bus){ 
-					//$bus_availability += $WC_custom_teatro_attributes->getBusAvailability($bus['bus_id']); 
-					//$bus_availability = $WC_custom_teatro_attributes->getBusAvailability($bus['bus_id']); 
-					//$WC_custom_teatro_attributes->printRData($bus_availability); 
-					//$WC_custom_teatro_attributes->printRData($bus);
+				$buses = $WC_custom_teatro_attributes->getBusesDataByWeek($pid, $week); //$WC_custom_teatro_attributes->printRData($buses);
+				$week_bus_availability = 0;
+				foreach($buses as $bus){
+					if(!empty($bus['seats']) && intval($bus['seats']) > 0) {
+						$week_bus_availability = 1;
+						break;
+					}
 				}
-				//$disabled_seats = ($bus_availability == 0)?'disabled':'';
-				//$hide_seats = ($bus_availability == 0)?' style="opacity: 0.1" ':'';
+				$disabled_seats = ($week_bus_availability == 0)?'disabled':'';
+				$hide_seats = ($week_bus_availability == 0)?' style="opacity: 0.1" ':'';
+				$checked_yes = ($week_bus_availability == 0)?'': 'checked';
+				$checked_no = ($week_bus_availability == 0)?'checked': '';
 
-				if(!empty($buses)){	$bus_count++;
-					
-					$html.='<div class="radioGroupWrap">';
-					$html.='<div class="radioOuter"><div class="radioWrap"><input type="radio" class="btn-check" name="product_bus_option_'.$bus_count.'" id="product_bus_option_no_'.$bus_count.'" value="no_bus" autocomplete="off" data-bus="'.$bus_count.'" checked><label for="product_bus_option_no_'.$bus_count.'">'.esc_html__('Autonomo','teatro-courses-buses').'</label><span class="checkmark"></span> </div></div>';
-						
-						$html.='<div class="radioOuter"><div class="radioWrap"><input type="radio" class="btn-check" name="product_bus_option_'.$bus_count.'" id="product_bus_option_yes_'.$bus_count.'" value="bus" autocomplete="off" data-bus="'.$bus_count.'" '.$disabled_seats.'><label for="product_bus_option_yes_'.$bus_count.'">'.esc_html__('Con il pulmino','teatro-courses-buses').'</label><span class="checkmark" '.$disabled_seats.$hide_seats.'></span> </div></div>';
-						
+					if(!empty($buses)){
+				$html.='<div class="radioGroupWrap">';
+				$html.='<div class="radioOuter"><div class="radioWrap"><input type="radio" class="btn-check" name="product_bus_option_'.$bus_count.'" id="product_bus_option_yes_'.$bus_count.'" value="bus" autocomplete="off" data-bus="'.$bus_count.'" '.$disabled_seats.' '.$checked_yes.'><label for="product_bus_option_yes_'.$bus_count.'">'.esc_html__('Con il pulmino (scelta consigliata)','teatro-courses-buses').'</label><span class="checkmark" '.$disabled_seats.$hide_seats.'></span> </div></div>';
+
+				$html.='<div class="radioOuter"><div class="radioWrap"><input type="radio" class="btn-check" name="product_bus_option_'.$bus_count.'" id="product_bus_option_no_'.$bus_count.'" value="no_bus" autocomplete="off" data-bus="'.$bus_count.'" '.$checked_no.'><label for="product_bus_option_no_'.$bus_count.'">'.esc_html__('Autonomo','teatro-courses-buses').'</label><span class="checkmark"></span> </div></div>';
 					$html.='</div>';
-					$html.='<div class="radioGroupWrap no_stop_selected bus_list" data-bus-list="'.$bus_count.'">';
-					foreach($buses as $bus): 
-						$bus_availability = $WC_custom_teatro_attributes->getBusAvailability($bus['bus_id']); 
-						$disabled_seats = ($bus_availability == 0)?'disabled':'';
-						$hide_seats = ($bus_availability == 0)?' style="opacity: 0.1" ':'';
-						//$WC_custom_teatro_attributes->printRData($bus);	
-
-						if($bus['seats'] == 0) {
-							$disabled_seats = ($bus['seats'] == 0)?'disabled':'';
-							$hide_seats = ($bus['seats'] == 0)?' style="opacity: 0.1" ':'';
-						}						
+					$bus_list_hidden = ($week_bus_availability == 0) ? 'no_stop_selected' : '';
+					$html.='<div class="radioGroupWrap '.$bus_list_hidden.' bus_list" data-bus-list="'.$bus_count.'">';
+					foreach($buses as $bus):
+						//$WC_custom_teatro_attributes->printRData($bus);
+						// $bus['seats'] è già la disponibilità corretta per questa settimana (da getBusesDataByWeek con $week)
+						$disabled_seats = ($bus['seats'] == 0)?'disabled':'';
+						$hide_seats = ($bus['seats'] == 0)?' style="opacity: 0.1" ':'';						
 						
 						if(!empty($bus['seats'])){ 
 							$html.='<div class="radioGroupTitle busName1">'.$bus['bus_title'].' ('.$bus['seats'].' '.esc_html__('posti rimanenti', 'teatro-courses-buses').')'.'</div>';		
@@ -169,17 +166,18 @@ function getCBStep3HTML($pid=false, $token=false){
 						// $html.='</div>';
 					endforeach;		
 				} else {
-					$html.='<div class="radioGroupWrap">';				
+					$html.='<div class="radioGroupWrap">';
 						$html.='<div class="radioOuter"><div class="radioWrap"><input type="radio" class="btn-check" name="product_bus_option_'.$bus_count.'" id="product_bus_option_no_'.$bus_count.'" value="no_bus" autocomplete="off" data-bus="'.$bus_count.'" checked><label for="product_bus_option_no_'.$bus_count.'">'.esc_html__('Autonomo','teatro-courses-buses').'</label><span class="checkmark"></span> </div></div>';
 					//$html .= '<div class="course_unavailability">' . __('Nessun autobus associato a questo corso', 'teatro-courses-buses') . '</div>';
 				}
 				$html.='</div>';
+				$bus_count++;
 			endforeach;	
 			$html.='</div>';			
 			
 		}
 
-		if($bus_availability == 0 && !empty($buses)){
+		if($week_bus_availability == 0 && !empty($buses)){
 			$html .= '<div class="course_unavailability">' . __('If the bus is not available, <a href="mailto:info@teatrosolare.it">contact us</a> to be added to the waiting list.', 'teatro-courses-buses') . '</div>';
 		}
 		$html.='<div class="alerts3_dnone" id="alert_step3_cb"></div>';
@@ -535,23 +533,39 @@ function change_order_item_meta_value($value, $meta, $item){
 } 
 
 /* update bus seating capacity when order done successfully! */
+// Registra i posti immediatamente alla creazione dell'ordine (es. bonifico, PayPal in attesa)
+add_action('woocommerce_new_order', 'update_busseats', 10, 1);
+// Fallback: registra i posti anche alla visualizzazione della thank-you page (già protetto da validateOrderAlreadySaved contro duplicati)
 add_action('woocommerce_thankyou', 'update_busseats', 10, 1);
 function update_busseats($order_id){	
     $order = new WC_Order($order_id); global $WC_custom_teatro_attributes;
     if(!empty($order)):
-		foreach($order->get_items() as $item_id => $item): 
-			$product_id = $item->get_product_id(); $parent = wp_get_current_user(); 
-			$child_id = $item->get_meta('parent_childs_selected'); 			
-			$week_id = $item->get_meta('product_weeks_selected'); 		//$WC_custom_teatro_attributes->printRData($week_id);	
-			$booking=[
-				'order_id'=>$order_id,
-				'product_id'=>$product_id,
-				'parent_id'=>$parent->ID,
-				'child_id'=>$child_id,
-				'week_id'=>$WC_custom_teatro_attributes->getTimeStringWeeksArray($week_id),
-				'booked_at'=>time()				
-			];			//$WC_custom_teatro_attributes->printRData($booking);
-			$WC_custom_teatro_attributes->bookBusSeat(['bus'=>$item->get_meta('product_buses_selected'),'book_data'=>$booking]);		
+		foreach($order->get_items() as $item_id => $item):
+			$product_id = $item->get_product_id(); $parent = wp_get_current_user();
+			$child_id   = $item->get_meta('parent_childs_selected');
+			$week_meta  = $item->get_meta('product_weeks_selected');
+			$bus_meta   = $item->get_meta('product_buses_selected');
+
+			// Crea una prenotazione separata per ogni settimana:
+			// ogni settimana può avere un bus diverso (indice parallelo).
+			$weeks = $WC_custom_teatro_attributes->extractMultipleSelections($week_meta);
+			$buses = $WC_custom_teatro_attributes->extractMultipleSelections($bus_meta);
+
+			if (!empty($weeks)) {
+				foreach ($weeks as $i => $week) {
+					$single_bus = isset($buses[$i]) ? trim($buses[$i]) : 'empty';
+					if ($single_bus === 'empty') continue; // nessun pulmino per questa settimana
+					$booking = [
+						'order_id'   => $order_id,
+						'product_id' => $product_id,
+						'parent_id'  => $parent->ID,
+						'child_id'   => $child_id,
+						'week_id'    => $WC_custom_teatro_attributes->getReadableWeekString($week),
+						'booked_at'  => time(),
+					];
+					$WC_custom_teatro_attributes->bookBusSeat(['bus' => $single_bus, 'book_data' => $booking]);
+				}
+			}
 		endforeach;
 		?>
 		<a href="<?php echo get_permalink( wc_get_page_id( 'myaccount' ) ); ?>" class="woocommerce-button button view order-actions-button ">Torna al mio account</a>

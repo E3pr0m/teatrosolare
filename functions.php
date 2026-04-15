@@ -868,6 +868,9 @@ add_filter( 'gettext', function( $translated, $original, $domain ) {
     return $translated;
 }, 10, 3 );
 
+// Rimuove il testo "Grazie ancora!" dal footer block delle email WooCommerce 9.x
+add_filter( 'woocommerce_email_footer_text', '__return_empty_string' );
+
 add_action( 'woocommerce_email_header', function() {
     switch_to_locale( 'it_IT' );
 }, 1 );

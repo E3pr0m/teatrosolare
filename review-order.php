@@ -13,6 +13,8 @@
  * @see https://woo.com/document/template-structure/
  * @package WooCommerce\Templates
  * @version 5.2.0
+ * @edited by E3pr0m for custom discounts logic (Release 1.1.0 del 20260326)
+ *
  */
 
 defined( 'ABSPATH' ) || exit;

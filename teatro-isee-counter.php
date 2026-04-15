@@ -43,6 +43,19 @@ if ( ! defined( 'TEATRO_ISEE_POOL_USED' ) ) define( 'TEATRO_ISEE_POOL_USED', 'te
 if ( ! defined( 'TEATRO_ISEE_CHILD_MAX' ) ) define( 'TEATRO_ISEE_CHILD_MAX', 'teatro_isee_child_max_' );
 if ( ! defined( 'TEATRO_ISEE_CHILD_META') ) define( 'TEATRO_ISEE_CHILD_META','teatro_isee_child_'     );
 
+/**
+ * Accumulatore cart-level: traccia le settimane già assegnate a ciascun
+ * figlio durante la passata corrente di validateUserProductEligibility.
+ * Resettato dall'action 'teatro_isee_before_cart_pass' a ogni nuova passata.
+ */
+global $_teatro_cart_child_used;
+$_teatro_cart_child_used = [];
+
+add_action( 'teatro_isee_before_cart_pass', function() {
+	global $_teatro_cart_child_used;
+	$_teatro_cart_child_used = [];
+} );
+
 /* =============================================================================
  * 1. HELPERS – POOL GLOBALE
  * ============================================================================= */
@@ -233,7 +246,14 @@ function teatro_get_child_name( $child_id ) {
  * ]
  * ============================================================================= */
 
-function teatro_isee_calc_allowed_weeks( $cart_item, $certificate, $user_id ) {
+/**
+ * $extra_used: settimane già assegnate ad altri item dello stesso carrello
+ *              nella passata corrente (accumulatore cart-level).
+ *              Serve per evitare che due item con lo stesso figlio ottengano
+ *              entrambi il limite pieno — il DB non li vede ancora perché
+ *              l'ordine non è stato creato.
+ */
+function teatro_isee_calc_allowed_weeks( $cart_item, $certificate, $user_id, $extra_used = [] ) {
 	$child_weeks = teatro_extract_child_weeks($cart_item);
 	$child_max   = teatro_get_child_max($certificate);
 	$pool_rem    = teatro_get_pool_remaining($certificate);
@@ -246,7 +266,9 @@ function teatro_isee_calc_allowed_weeks( $cart_item, $certificate, $user_id ) {
 		$requested = (int)$entry['weeks'];
 
 		if ( $child_max > 0 && $user_id ) {
-			$used      = teatro_get_child_used($user_id, $certificate, $cid);
+			$db_used   = teatro_get_child_used($user_id, $certificate, $cid);
+			$cart_used = (int)($extra_used[$cid] ?? 0); // settimane già assegnate in questo carrello
+			$used      = $db_used + $cart_used;
 			$remaining = max(0, $child_max - $used);
 			$allowed   = min($requested, $remaining);
 		} else {
@@ -486,8 +508,18 @@ add_filter( 'teatro_isee_item_eligibility', 'teatro_isee_dual_cap_check', 10, 3 
 function teatro_isee_dual_cap_check( $eligibility, $certificate, $cart_item ) {
 	if ( empty($eligibility['discount_amount']) || empty($certificate) ) return $eligibility;
 
+	global $_teatro_cart_child_used;
+	if ( ! isset($_teatro_cart_child_used) ) $_teatro_cart_child_used = [];
+
 	$user_id = get_current_user_id();
-	$calc    = teatro_isee_calc_allowed_weeks($cart_item, $certificate, $user_id);
+	// Passa l'accumulatore: le settimane già assegnate ad altri item
+	// di questo stesso carrello vengono sommate al valore del DB.
+	$calc = teatro_isee_calc_allowed_weeks($cart_item, $certificate, $user_id, $_teatro_cart_child_used);
+
+	// Aggiorna l'accumulatore con le settimane appena assegnate a questo item
+	foreach ( $calc['per_child'] as $cid => $data ) {
+		$_teatro_cart_child_used[$cid] = ($_teatro_cart_child_used[$cid] ?? 0) + $data['allowed'];
+	}
 
 	if ( $calc['total_allowed'] <= 0 ) {
 		$eligibility['discount_amount'] = 0;
@@ -524,6 +556,12 @@ function teatro_isee_reserve_pool( $order, $data ) {
 
 	$check = $teatro_discounts->validateUserProductEligibility(WC()->cart);
 	if ( empty($check['discount_amount']) || $check['discount_amount'] <= 0 ) return;
+
+	// Verifica che ISEE abbia effettivamente vinto il confronto con la fedeltà.
+	// Se ha vinto la fedeltà, l'utente non ha usufruito dello sconto ISEE →
+	// non si devono consumare settimane dal pool né dal limite per figlio.
+	$fee_array = $teatro_discounts->getFeeAppliedArray();
+	if ( empty($fee_array['isee']) ) return;
 
 	$total_weeks = 0;
 	foreach (WC()->cart->get_cart() as $cart_item) {
@@ -631,8 +669,14 @@ function teatro_isee_assign_to_children( $order ) {
  * 9. DECREMENTO SU ANNULLAMENTO / RIMBORSO
  * ============================================================================= */
 
-add_action( 'woocommerce_order_status_cancelled', 'teatro_isee_decrement', 20, 1 );
-add_action( 'woocommerce_order_status_refunded',  'teatro_isee_decrement', 20, 1 );
+add_action( 'woocommerce_order_status_cancelled',  'teatro_isee_decrement', 20, 1 );
+add_action( 'woocommerce_order_status_refunded',   'teatro_isee_decrement', 20, 1 );
+// Fallback: si attiva quando il rimborso completo viene processato via wc_create_refund()
+// indipendentemente dalla transizione di stato (es. rimborsi manuali o via gateway che
+// non cambiano lo stato automaticamente). La guardia _teatro_isee_counted previene doppi decrementi.
+add_action( 'woocommerce_order_fully_refunded', function( $order_id, $refund_id ) {
+	teatro_isee_decrement( $order_id );
+}, 20, 2 );
 function teatro_isee_decrement( $order_id ) {
 	$order = wc_get_order($order_id);
 	if ( !$order || !$order->get_meta('_teatro_isee_counted') ) return;

@@ -90,16 +90,14 @@ class Teatro_discounts
 			if ($best_key !== '')
 				$return[$best_key] = ['label'=>$discounts[$best_key]['label'],'amount'=>$discounts[$best_key]['amount'],'status'=>true];
 
-			// Se ISEE ha vinto ma è parziale (alcune settimane bloccate per limite figlio),
-			// aggiunge lo sconto fedeltà calcolato sulle settimane non scontate da ISEE.
-			// Il filtro è implementato in teatro-isee-counter.php.
-			if ( $best_key === 'isee' ) {
-				$supplementary = (float) apply_filters( 'teatro_isee_supplementary_discount', 0, WC()->cart );
-				if ( $supplementary > 0 ) {
-					$return[$best_key]['amount'] += $supplementary;
-					$return[$best_key]['label']  .= ' + ' . __('Sconto fedeltà', 'teatro-discounts');
-				}
-			}
+			// ── SCONTO SUPPLEMENTARE: disabilitato – il sistema applica un solo sconto (il maggiore) ──
+			// if ( $best_key === 'isee' ) {
+			// 	$supplementary = (float) apply_filters( 'teatro_isee_supplementary_discount', 0, WC()->cart );
+			// 	if ( $supplementary > 0 ) {
+			// 		$return[$best_key]['amount'] += $supplementary;
+			// 		$return[$best_key]['label']  .= ' + ' . __('Sconto fedeltà', 'teatro-discounts');
+			// 	}
+			// }
 		}
 		return $return;
 	}
@@ -144,6 +142,9 @@ class Teatro_discounts
 	 */
 	public function validateUserProductEligibility($cart=false){
 		if(!empty($cart)): $discount_amount=0; $discount_label='';
+			// Resetta l'accumulatore carrello in teatro-isee-counter.php
+			// prima di iterare gli item, così ogni passata parte da zero.
+			do_action('teatro_isee_before_cart_pass');
 			foreach($cart->get_cart() as $cart_item_key => $cart_item){
 				$subtotal    = $this->get_product_subtotal($cart_item['data'], $cart_item['quantity']);				
 				$is_eligible = $this->validateProductEligibilty($cart_item['product_id'], $subtotal);
@@ -152,7 +153,11 @@ class Teatro_discounts
 					// Filtro: controllo pool globale + limite per figlio
 					$is_eligible = apply_filters('teatro_isee_item_eligibility', $is_eligible, $isee, $cart_item);
 					$discount_amount += $is_eligible['discount_amount'];
-					$discount_label   = $is_eligible['discount_label'];
+					// Non sovrascrivere con stringa vuota: il filtro può azzerare il label
+					// per item bloccati (limite figlio raggiunto), ma il label del primo
+					// item valido deve restare visibile nel carrello.
+					if (!empty($is_eligible['discount_label']))
+						$discount_label = $is_eligible['discount_label'];
 				}
 			}
 			return ['discount_amount'=>$discount_amount, 'discount_label'=>$discount_label];
